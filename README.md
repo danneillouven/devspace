@@ -168,6 +168,24 @@ For a normal ChatGPT coding session:
 4. Approve the connection with the Owner password.
 5. Ask ChatGPT to open a project inside one of your allowed roots.
 
+For a Cloudflare quick tunnel from the source checkout, run:
+
+```bash
+npm run build
+npm run start:tunnel
+```
+
+This requires `cloudflared` on your PATH and an existing DevSpace setup
+(`node dist/cli.js init`). It starts a tunnel to your configured local host and
+port (default `127.0.0.1:7676`), saves its generated URL as `publicBaseUrl`,
+starts DevSpace, and prints the public MCP URL in a prominent final banner
+after local health succeeds, the tunnel connects, and startup logs settle.
+The public tunnel may take a little longer to become reachable.
+
+Keep the terminal open; Ctrl+C stops both processes. Each run creates a new
+quick tunnel URL, which remains in your config after shutdown. Your existing
+`npm start` command continues to start DevSpace by itself.
+
 ## Platform Support
 
 DevSpace supports Linux, macOS, and Windows environments with a Bash-compatible

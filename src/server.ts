@@ -862,7 +862,7 @@ export function createServer(
   });
 
   if (config.logging.trustProxy) {
-    app.set("trust proxy", true);
+    app.set("trust proxy", "loopback");
   }
 
   app.use((req, res, next) => {

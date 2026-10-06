@@ -21,6 +21,7 @@ import { writeTestDevspaceConfig } from "./test-support/config.test.js";
 
 const execFileAsync = promisify(execFile);
 
+<<<<<<< HEAD
 test("tool modes expose the expected host-facing tool surface", async (t) => {
   const cases: Array<{
     mode: ToolMode;
@@ -312,6 +313,88 @@ test("show_changes can reopen a historical review without advancing the checkpoi
   );
 });
 
+=======
+test("HTTP server safely trusts loopback proxies for OAuth rate limits", async () => {
+  const root = await mkdtemp(join(tmpdir(), "devspace-http-server-test-"));
+  const config = loadConfig({
+    DEVSPACE_CONFIG_DIR: join(root, ".config"),
+    DEVSPACE_STATE_DIR: join(root, ".state"),
+    DEVSPACE_ALLOWED_ROOTS: root,
+    DEVSPACE_OAUTH_OWNER_TOKEN: "test-owner-token-that-is-long-enough",
+    DEVSPACE_PUBLIC_BASE_URL: "http://127.0.0.1:7676",
+    DEVSPACE_TRUST_PROXY: "1",
+    PORT: "1",
+  });
+  const runningServer = createServer(config);
+  const httpServer = runningServer.app.listen(0, "127.0.0.1");
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      httpServer.once("listening", resolve);
+      httpServer.once("error", reject);
+    });
+
+    const address = httpServer.address();
+    assert.ok(address && typeof address !== "string");
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+
+    assert.equal(runningServer.app.get("trust proxy"), "loopback");
+    const trustProxy = runningServer.app.get("trust proxy fn") as (address: string, index: number) => boolean;
+    assert.equal(trustProxy("127.0.0.1", 0), true);
+    assert.equal(trustProxy("203.0.113.10", 0), false);
+
+    const health = await fetch(`${baseUrl}/healthz`);
+    assert.equal(health.status, 200);
+
+    const authorizationMetadata = await fetch(`${baseUrl}/.well-known/oauth-authorization-server`);
+    assert.equal(authorizationMetadata.status, 200);
+
+    const protectedResourceMetadata = await fetch(`${baseUrl}/.well-known/oauth-protected-resource/mcp`);
+    assert.equal(protectedResourceMetadata.status, 200);
+
+    const rootProtectedResourceMetadata = await fetch(`${baseUrl}/.well-known/oauth-protected-resource`);
+    assert.equal(rootProtectedResourceMetadata.status, 404);
+
+    const postToken = (forwardedFor?: string) => fetch(`${baseUrl}/token`, {
+      method: "POST",
+      headers: forwardedFor ? { "x-forwarded-for": forwardedFor } : undefined,
+    });
+
+    const firstProxiedRequest = await postToken("198.51.100.10");
+    assert.notEqual(firstProxiedRequest.status, 500);
+    assert.notEqual(firstProxiedRequest.status, 429);
+    assert.doesNotMatch(await firstProxiedRequest.text(), /ERR_ERL_/);
+
+    for (let request = 1; request < 50; request += 1) {
+      const response = await postToken("198.51.100.10");
+      assert.notEqual(response.status, 500);
+      assert.notEqual(response.status, 429);
+      await response.body?.cancel();
+    }
+
+    const limitedProxiedRequest = await postToken("198.51.100.10");
+    assert.equal(limitedProxiedRequest.status, 429);
+    await limitedProxiedRequest.body?.cancel();
+
+    const separateProxiedRequest = await postToken("198.51.100.11");
+    assert.notEqual(separateProxiedRequest.status, 429);
+    assert.notEqual(separateProxiedRequest.status, 500);
+    await separateProxiedRequest.body?.cancel();
+
+    const directRequest = await postToken();
+    assert.notEqual(directRequest.status, 429);
+    assert.notEqual(directRequest.status, 500);
+    await directRequest.body?.cancel();
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      httpServer.close((error) => error ? reject(error) : resolve());
+    });
+    await runningServer.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+>>>>>>> 5ff8f2a (feat: add cloudflare tunnel)
 test("open_workspace keeps lifecycle flags out of model output and preserves complete card metadata", async (t) => {
   const providerNote = "available";
   const context = await fixture(t, {

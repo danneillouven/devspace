@@ -4,3 +4,4 @@ releases/
 .devspace-dev/
 .env
 *.log
+.DS_Store
