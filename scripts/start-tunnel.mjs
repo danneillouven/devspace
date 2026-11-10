@@ -20,6 +20,17 @@ export async function run({ cliPath = resolve(root, 'dist/cli.js'), cloudflared 
     throw new Error('DevSpace setup missing. Run: node dist/cli.js init');
   }
   const config = loadConfig();
+  const token = process.env.TUNNEL_TOKEN?.trim();
+  let url = token ? config.publicBaseUrl : undefined;
+  if (token) {
+    const publicUrl = new URL(url);
+    if (publicUrl.protocol !== 'https:' || publicUrl.username || publicUrl.password ||
+        publicUrl.hostname === 'trycloudflare.com' || publicUrl.hostname.endsWith('.trycloudflare.com')) {
+      throw new Error('Token mode requires your named tunnel HTTPS hostname. Run: node dist/cli.js config set publicBaseUrl https://devspace.example.com');
+    }
+  }
+  // Only cloudflared needs the tunnel credential.
+  const { TUNNEL_TOKEN, TUNNEL_TOKEN_FILE, ...serverEnv } = process.env;
   const probe = createServer();
   await new Promise((accept, reject) => {
     probe.once('error', reject);
@@ -67,8 +78,8 @@ export async function run({ cliPath = resolve(root, 'dist/cli.js'), cloudflared 
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
   try {
-    const tunnel = launch(cloudflared, ['tunnel', '--url', localUrl]);
-    let url;
+    const tunnel = launch(cloudflared, token ? ['tunnel', 'run'] : ['tunnel', '--url', localUrl],
+      token ? { ...serverEnv, TUNNEL_TOKEN: token } : serverEnv);
     let tunnelConnected = false;
     for (const stream of [tunnel.stdout, tunnel.stderr]) {
       let buffer = '';
@@ -79,19 +90,21 @@ export async function run({ cliPath = resolve(root, 'dist/cli.js'), cloudflared 
         tunnelConnected ||= buffer.includes('Registered tunnel connection');
       });
     }
-    await waitUntil(() => Boolean(url), 'Cloudflare tunnel URL');
-    const update = launch(process.execPath, [cliPath, 'config', 'set', 'publicBaseUrl', url], process.env, false);
-    update.stdout.pipe(process.stdout);
-    update.stderr.pipe(process.stderr);
-    await new Promise((accept, reject) => {
-      const timer = setTimeout(() => reject(new Error('Timed out updating DevSpace config')), timeoutMs);
-      update.once('close', () => clearTimeout(timer));
-      update.once('error', reject);
-      update.once('exit', code => code === 0 ? accept() : reject(new Error(`Config update exited (${code})`)));
-      controller.signal.addEventListener('abort', () => reject(failed ?? new Error('Startup interrupted')), { once: true });
-    });
+    if (!token) {
+      await waitUntil(() => Boolean(url), 'Cloudflare tunnel URL');
+      const update = launch(process.execPath, [cliPath, 'config', 'set', 'publicBaseUrl', url], serverEnv, false);
+      update.stdout.pipe(process.stdout);
+      update.stderr.pipe(process.stderr);
+      await new Promise((accept, reject) => {
+        const timer = setTimeout(() => reject(new Error('Timed out updating DevSpace config')), timeoutMs);
+        update.once('close', () => clearTimeout(timer));
+        update.once('error', reject);
+        update.once('exit', code => code === 0 ? accept() : reject(new Error(`Config update exited (${code})`)));
+        controller.signal.addEventListener('abort', () => reject(failed ?? new Error('Startup interrupted')), { once: true });
+      });
+    }
     if (stopping) throw failed ?? new Error('Startup interrupted');
-    const server = launch(process.execPath, [cliPath, 'serve'], { ...process.env, DEVSPACE_PUBLIC_BASE_URL: url });
+    const server = launch(process.execPath, [cliPath, 'serve'], { ...serverEnv, DEVSPACE_PUBLIC_BASE_URL: url });
     server.stdout.pipe(process.stdout);
     server.stderr.pipe(process.stderr);
     await waitUntil(async () => {

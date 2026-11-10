@@ -186,6 +186,28 @@ Keep the terminal open; Ctrl+C stops both processes. Each run creates a new
 quick tunnel URL, which remains in your config after shutdown. Your existing
 `npm start` command continues to start DevSpace by itself.
 
+To use a remotely managed Cloudflare tunnel with a stable hostname, create the
+tunnel in your Cloudflare dashboard and route its public hostname to your
+configured local DevSpace address (default `http://127.0.0.1:7676`). Copy the
+tunnel token from Cloudflare, then run:
+
+```bash
+node dist/cli.js config set publicBaseUrl https://devspace.example.com
+export TUNNEL_TOKEN='your-tunnel-token'
+npm run start:tunnel
+```
+
+With `TUNNEL_TOKEN` set, the script runs `cloudflared tunnel run` using the token
+from its environment and uses the saved `publicBaseUrl` without changing it.
+That URL must be your named tunnel's HTTPS hostname; a previous quick tunnel
+URL cannot be used. The token stays out of command arguments and is not passed
+to the DevSpace server. Cloudflare routing and credentials remain under your
+control. See [Cloudflare's tunnel setup guide](https://developers.cloudflare.com/tunnel/get-started/).
+
+To return to a free temporary URL, run `unset TUNNEL_TOKEN` followed by
+`npm run start:tunnel`. Both modes require `cloudflared` on your PATH and stop
+both processes when you press Ctrl+C.
+
 ## Platform Support
 
 DevSpace supports Linux, macOS, and Windows environments with a Bash-compatible
